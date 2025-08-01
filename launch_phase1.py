@@ -62,7 +62,7 @@ def choose_crop_method():
     visual_frame = tk.Frame(method_frame)
     visual_frame.pack(pady=10)
     
-            tk.Button(visual_frame, text="Visual Selection", command=choose_visual,
+    tk.Button(visual_frame, text="Visual Selection", command=choose_visual,
               font=("Arial", 12), bg="#4CAF50", fg="white", 
               width=20, height=2).pack()
     tk.Label(visual_frame, text="Click and drag on displayed image\\n(May not work with some Python installations)",
@@ -72,7 +72,7 @@ def choose_crop_method():
     coord_frame = tk.Frame(method_frame)
     coord_frame.pack(pady=10)
     
-            tk.Button(coord_frame, text="Coordinate Entry", command=choose_coordinate,
+    tk.Button(coord_frame, text="Coordinate Entry", command=choose_coordinate,
               font=("Arial", 12), bg="#2196F3", fg="white",
               width=20, height=2).pack()
     tk.Label(coord_frame, text="Enter coordinates manually\\n(Works with all Python installations)",
@@ -126,11 +126,7 @@ def launch_phase1():
     
     print(f"Using crop method: {crop_method}")
     
-    # Modify the label extractor behavior based on chosen method
-    if crop_method == "coordinate":
-        # Force use of simple crop selector
-        print("Forcing simple coordinate-based crop selection...")
-        _force_simple_crop_method()
+    # Note: The label extractor will handle coordinate method automatically
     
     # Import and run Phase 1
     try:
@@ -148,51 +144,7 @@ def launch_phase1():
         print("Full traceback:")
         traceback.print_exc()
 
-def _force_simple_crop_method():
-    """Monkey patch to force simple crop method."""
-    try:
-        import label_extractor
-        from simple_crop import SimpleCropSelector
-        
-        # Replace the CropSelector class
-        original_process_first_slide = label_extractor.LabelExtractor._process_first_slide
-        
-        def patched_process_first_slide(self, slide_file):
-            """Modified first slide processing that uses simple crop selector."""
-            print(f"Processing first slide with coordinate method: {os.path.basename(slide_file)}")
-            
-            # Extract label image
-            label_image = self._extract_label_image(slide_file)
-            if label_image is None:
-                return False
-            
-            # Use simple crop selector directly
-            print("Using coordinate-based crop selection...")
-            simple_selector = SimpleCropSelector(slide_file, label_image.size)
-            self.crop_coords = simple_selector.select_crop_region()
-            
-            if self.crop_coords is None:
-                print("Crop selection cancelled")
-                return False
-            
-            # Process and save first image
-            processed_image = self._process_label_image(label_image, apply_crop=True)
-            if processed_image is None:
-                return False
-            
-            output_filename = self._get_label_filename(slide_file)
-            output_path = os.path.join(self.label_folder, output_filename)
-            processed_image.save(output_path, "JPEG", quality=90)
-            
-            print(f"First slide processed successfully. Crop region: {self.crop_coords}")
-            return True
-        
-        # Apply the patch
-        label_extractor.LabelExtractor._process_first_slide = patched_process_first_slide
-        print("Applied coordinate-based crop method patch")
-        
-    except Exception as e:
-        print(f"Failed to apply patch: {e}")
+
 
 if __name__ == "__main__":
     launch_phase1()
