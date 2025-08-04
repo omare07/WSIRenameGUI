@@ -16,9 +16,9 @@ import utils
 class RenamingGUI:
     """GUI application for renaming slides based on label images."""
     
-    def __init__(self):
+    def __init__(self, initial_folder: str = ""):
         self.root = tk.Tk()
-        self.slide_folder = ""
+        self.slide_folder = initial_folder
         self.label_folder = ""
         self.output_folder = ""
         self.prefix = config.DEFAULT_PREFIX
@@ -36,6 +36,16 @@ class RenamingGUI:
         self.progress_var = None
         
         self._setup_gui()
+        
+        # If initial folder is provided, set it and try to load images
+        if initial_folder and os.path.exists(initial_folder):
+            self.folder_var.set(initial_folder)
+            # Auto-load images if folder is valid
+            try:
+                self._load_images()
+            except Exception as e:
+                print(f"Could not auto-load images from {initial_folder}: {e}")
+        
         self._update_display()
     
     def _setup_gui(self):
@@ -63,7 +73,7 @@ class RenamingGUI:
         ttk.Button(config_frame, text="Browse", command=self._browse_output).grid(row=1, column=2, padx=5)
         
         # Prefix and extension
-        ttk.Label(config_frame, text="Prefix:").grid(row=2, column=0, sticky=tk.W, padx=5)
+        ttk.Label(config_frame, text="Prefix (auto-set):").grid(row=2, column=0, sticky=tk.W, padx=5)
         self.prefix_var = tk.StringVar(value=config.DEFAULT_PREFIX)
         ttk.Entry(config_frame, textvariable=self.prefix_var, width=20).grid(row=2, column=1, padx=5, sticky=tk.W)
         
@@ -168,6 +178,12 @@ class RenamingGUI:
         folder = filedialog.askdirectory(title="Select Slide Folder")
         if folder:
             self.folder_var.set(folder)
+            # Auto-set prefix based on selected directory name
+            folder_name = os.path.basename(os.path.normpath(folder))
+            if folder_name and folder_name != '.':
+                auto_prefix = f"{folder_name}_"
+                self.prefix_var.set(auto_prefix)
+                self.status_var.set(f"Auto-set prefix to '{auto_prefix}' based on directory name")
     
     def _browse_output(self):
         """Browse for output folder."""
@@ -188,6 +204,13 @@ class RenamingGUI:
         if not os.path.exists(self.label_folder):
             messagebox.showerror("Error", f"Label folder not found: {self.label_folder}\\nRun Phase 1 first!")
             return
+        
+        # Auto-set prefix based on directory name
+        folder_name = os.path.basename(os.path.normpath(slide_folder))
+        if folder_name and folder_name != '.':
+            auto_prefix = f"{folder_name}_"
+            self.prefix_var.set(auto_prefix)
+            self.status_var.set(f"Auto-set prefix to '{auto_prefix}' based on directory name")
         
         # Get output folder
         output_folder = self.output_var.get()
@@ -540,11 +563,15 @@ class RenamingGUI:
                 # Update GUI
                 self.folder_var.set(self.slide_folder)
                 self.output_var.set(self.output_folder)
-                self.prefix_var.set(self.prefix)
+                # Don't override prefix here - let _load_images auto-set it based on folder
                 self.ext_var.set(self.extension)
                 
-                # Reload images
+                # Reload images (this will auto-set prefix based on folder)
                 self._load_images()
+                
+                # If session had a different prefix than auto-detected, restore it
+                if self.prefix != self.prefix_var.get():
+                    self.prefix_var.set(self.prefix)
                 
                 messagebox.showinfo("Success", f"Session loaded from {file_path}")
                 
@@ -555,11 +582,14 @@ class RenamingGUI:
         """Show about dialog."""
         about_text = """Histology Slide Renaming Tool
         
-Version 1.0
+Version 2.0
 
 This application helps with histology slide review and file renaming:
-• Phase 1: Extract label images from whole-slide images
+• Phase 1: Extract label images from whole-slide images (parallel processing)
 • Phase 2: GUI-based renaming using label images
+• Auto-detection: Automatically determines which phase to run
+• Smart prefix: Auto-sets model name based on directory
+• Parallel processing: 3-12x faster label extraction
 
 Supported formats: .svs, .ndpi, .scn, .vms, .vmu, .mrxs
 
@@ -575,9 +605,9 @@ Requirements:
         self.root.mainloop()
 
 
-def run_phase2():
+def run_phase2(initial_folder: str = ""):
     """Run Phase 2: GUI for Label-Based Renaming."""
-    app = RenamingGUI()
+    app = RenamingGUI(initial_folder)
     app.run()
 
 

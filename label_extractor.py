@@ -5,6 +5,8 @@ import traceback
 from typing import Optional, Tuple, List
 from pathlib import Path
 import tempfile
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from functools import partial
 
 try:
     import openslide
@@ -20,6 +22,144 @@ import numpy as np
 
 import config
 import utils
+
+
+def process_slide_parallel(slide_file: str, crop_coords: Optional[Tuple[int, int, int, int]], 
+                          label_folder: str, cannot_open_folder: str) -> Tuple[str, bool, str]:
+    """
+    Process a single slide file in parallel.
+    
+    Args:
+        slide_file: Path to the slide file
+        crop_coords: Crop coordinates (x1, y1, x2, y2) or None
+        label_folder: Path to label output folder
+        cannot_open_folder: Path to cannot_open folder
+        
+    Returns:
+        Tuple of (slide_filename, success, message)
+    """
+    slide_filename = os.path.basename(slide_file)
+    
+    try:
+        # Extract label image
+        result = _extract_label_image_standalone(slide_file, cannot_open_folder)
+        if result is None:
+            return (slide_filename, False, "Could not extract label image")
+        
+        label_image, is_direct_label = result
+        
+        # Determine if we need to crop
+        need_crop = crop_coords is not None and not is_direct_label
+        
+        # Process the image (crop and rotate)
+        processed_image = _process_label_image_standalone(label_image, crop_coords, need_crop)
+        if processed_image is None:
+            return (slide_filename, False, "Failed to process label image")
+        
+        # Save processed image
+        output_filename = _get_label_filename_standalone(slide_file)
+        output_path = os.path.join(label_folder, output_filename)
+        processed_image.save(output_path, "JPEG", quality=90)
+        
+        method = "direct label" if is_direct_label else "cropped overview"
+        return (slide_filename, True, f"Label extracted ({method})")
+        
+    except Exception as e:
+        return (slide_filename, False, f"Error: {str(e)}")
+
+
+def _extract_label_image_standalone(slide_file: str, cannot_open_folder: str) -> Optional[Tuple[Image.Image, bool]]:
+    """Standalone version of _extract_label_image for parallel processing."""
+    try:
+        # Try to open slide
+        slide = openslide.OpenSlide(slide_file)
+        
+        # Method 1: Try to get direct label image (best option!)
+        if 'label' in slide.associated_images:
+            label_image = slide.associated_images['label']
+            
+            # Convert RGBA to RGB if needed
+            if label_image.mode == 'RGBA':
+                label_image = label_image.convert('RGB')
+            
+            slide.close()
+            return label_image, True  # True means no cropping needed
+        
+        # Method 2: Check for 'macro' image specifically (needs cropping)
+        if 'macro' in slide.associated_images:
+            label_image = slide.associated_images['macro']
+            
+            # Convert RGBA to RGB if needed
+            if label_image.mode == 'RGBA':
+                label_image = label_image.convert('RGB')
+            
+            slide.close()
+            return label_image, False  # False means cropping IS needed
+        
+        # Method 3: Check for other associated images that might be direct labels
+        for assoc_name in slide.associated_images.keys():
+            if any(keyword in assoc_name.lower() for keyword in ['label', 'overview']) and assoc_name != 'macro':
+                label_image = slide.associated_images[assoc_name]
+                
+                # Convert RGBA to RGB if needed
+                if label_image.mode == 'RGBA':
+                    label_image = label_image.convert('RGB')
+                
+                slide.close()
+                return label_image, True  # True means no cropping needed
+        
+        # Method 4: Fall back to level 6 overview (requires cropping)
+        target_level = min(6, slide.level_count - 1)
+        
+        # Get dimensions for the target level
+        level_dims = slide.level_dimensions[target_level]
+        
+        # Read the entire level - this contains BOTH tissue and label areas
+        whole_image = slide.read_region((0, 0), target_level, level_dims)
+        
+        # Convert RGBA to RGB if needed
+        if whole_image.mode == 'RGBA':
+            whole_image = whole_image.convert('RGB')
+        
+        slide.close()
+        return whole_image, False  # False means cropping IS needed
+        
+    except Exception as e:
+        print(f"Cannot open slide {os.path.basename(slide_file)}: {e}")
+        # Move to cannot_open folder
+        try:
+            utils.move_file(slide_file, cannot_open_folder)
+            print(f"Moved to cannot_open folder: {os.path.basename(slide_file)}")
+        except Exception as move_error:
+            print(f"Error moving file: {move_error}")
+        return None
+
+
+def _process_label_image_standalone(image: Image.Image, crop_coords: Optional[Tuple[int, int, int, int]], 
+                                  apply_crop: bool) -> Optional[Image.Image]:
+    """Standalone version of _process_label_image for parallel processing."""
+    try:
+        processed = image.copy()
+        
+        # Apply crop if coordinates are available and requested
+        if apply_crop and crop_coords:
+            x1, y1, x2, y2 = crop_coords
+            processed = processed.crop((x1, y1, x2, y2))
+        
+        # Rotate by configured angle
+        processed = processed.rotate(config.DEFAULT_ROTATION_ANGLE, expand=True)
+        
+        return processed
+        
+    except Exception as e:
+        print(f"Error processing label image: {e}")
+        return None
+
+
+def _get_label_filename_standalone(slide_file: str) -> str:
+    """Standalone version of _get_label_filename for parallel processing."""
+    base_name = os.path.splitext(os.path.basename(slide_file))[0]
+    return f"{base_name}.jpg"
 
 
 class CropSelector:
@@ -331,12 +471,15 @@ class LabelExtractor:
         else:
             print(f"Using crop coordinates for remaining slides: {self.crop_coords}")
         
-        print(f"Starting to process remaining {len(slide_files) - 1} slides...")
+        remaining_slides = slide_files[1:]
+        if not remaining_slides:
+            print("Only one slide found - processing complete!")
+            return True
         
-        # Process remaining slides
-        for i, slide_file in enumerate(slide_files[1:], 2):
-            print(f"Processing slide {i}/{len(slide_files)}: {os.path.basename(slide_file)}")
-            self._process_slide(slide_file, apply_crop=True)
+        print(f"Starting to process remaining {len(remaining_slides)} slides in parallel batches of {config.DEFAULT_BATCH_SIZE}...")
+        
+        # Process remaining slides in parallel batches
+        self._process_slides_in_batches(remaining_slides)
         
         print("Label extraction completed!")
         return True
@@ -424,6 +567,73 @@ class LabelExtractor:
                 if os.path.exists(temp_label_path):
                     os.remove(temp_label_path)
                 return False
+    
+    def _process_slides_in_batches(self, slide_files: List[str]):
+        """Process slides in parallel batches."""
+        batch_size = config.DEFAULT_BATCH_SIZE
+        total_slides = len(slide_files)
+        successful = 0
+        failed = 0
+        
+        # Split slides into batches
+        for batch_start in range(0, total_slides, batch_size):
+            batch_end = min(batch_start + batch_size, total_slides)
+            batch = slide_files[batch_start:batch_end]
+            current_batch = batch_start // batch_size + 1
+            total_batches = (total_slides + batch_size - 1) // batch_size
+            
+            print(f"\nProcessing batch {current_batch}/{total_batches} ({len(batch)} slides)...")
+            
+            # Process this batch in parallel
+            batch_results = self._process_batch_parallel(batch)
+            
+            # Report results for this batch
+            batch_successful = sum(1 for _, success, _ in batch_results if success)
+            batch_failed = len(batch_results) - batch_successful
+            
+            successful += batch_successful
+            failed += batch_failed
+            
+            print(f"Batch {current_batch} complete: {batch_successful} successful, {batch_failed} failed")
+            
+            # Print individual results
+            for filename, success, message in batch_results:
+                status = "✓" if success else "✗"
+                print(f"  {status} {filename}: {message}")
+        
+        print(f"\nAll batches complete! Total: {successful} successful, {failed} failed")
+    
+    def _process_batch_parallel(self, batch_slides: List[str]) -> List[Tuple[str, bool, str]]:
+        """Process a batch of slides in parallel."""
+        # Create partial function with fixed parameters
+        process_func = partial(
+            process_slide_parallel,
+            crop_coords=self.crop_coords,
+            label_folder=self.label_folder,
+            cannot_open_folder=self.cannot_open_folder
+        )
+        
+        results = []
+        
+        # Use ProcessPoolExecutor for parallel processing
+        with ProcessPoolExecutor(max_workers=min(len(batch_slides), os.cpu_count() or 1)) as executor:
+            # Submit all tasks
+            future_to_slide = {
+                executor.submit(process_func, slide_file): slide_file 
+                for slide_file in batch_slides
+            }
+            
+            # Collect results as they complete
+            for future in as_completed(future_to_slide):
+                slide_file = future_to_slide[future]
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    filename = os.path.basename(slide_file)
+                    results.append((filename, False, f"Exception: {str(e)}"))
+        
+        return results
     
     def _process_slide(self, slide_file: str, apply_crop: bool = False):
         """Process a single slide file."""

@@ -25,3 +25,6 @@ LOG_FILENAME = "renaming_log.csv"
 
 # Skip files starting with these characters
 SKIP_PREFIXES = ['.', 'T']
+
+# Parallel processing settings
+DEFAULT_BATCH_SIZE = 12  # Number of slides to process in parallel per batch

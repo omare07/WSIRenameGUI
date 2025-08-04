@@ -1,11 +1,13 @@
 """Main application for Histology Slide Renaming Tool.
 
-This application provides a complete workflow for histology slide review and renaming:
+This application provides an intelligent workflow for histology slide review and renaming:
 - Phase 1: Extract label images from whole-slide images
 - Phase 2: GUI-based renaming using extracted labels
+- Auto-detection: Automatically determines which phase to run based on existing files
 
 Usage:
-    python main.py                    # Run complete workflow
+    python main.py                    # Auto-detect and run appropriate phase (default)
+    python main.py <folder>           # Auto-detect for specific folder
     python main.py --phase1 <folder> # Run only Phase 1
     python main.py --phase2           # Run only Phase 2
     python main.py --gui              # Start with GUI selector
@@ -22,6 +24,50 @@ import traceback
 import config
 import label_extractor
 import renaming_gui
+import utils
+
+
+def detect_required_phase(folder_path: str) -> str:
+    """
+    Automatically detect which phase should be run based on file counts.
+    
+    Args:
+        folder_path: Path to the directory containing WSI files
+        
+    Returns:
+        'phase1' if label extraction is needed
+        'phase2' if files are ready for renaming
+        'none' if no WSI files found
+    """
+    if not os.path.exists(folder_path):
+        return 'none'
+    
+    # Count WSI files in the main directory
+    wsi_files = utils.get_slide_files(folder_path)
+    wsi_count = len(wsi_files)
+    
+    if wsi_count == 0:
+        print("No supported WSI files found in the directory.")
+        return 'none'
+    
+    # Check for label image directory and count jpg files
+    label_folder = os.path.join(folder_path, config.LABEL_FOLDER)
+    jpg_count = 0
+    
+    if os.path.exists(label_folder):
+        for file in os.listdir(label_folder):
+            if file.lower().endswith('.jpg') and not utils.should_skip_file(file):
+                jpg_count += 1
+    
+    print(f"Found {wsi_count} WSI files and {jpg_count} label images")
+    
+    # Determine which phase to run
+    if jpg_count >= wsi_count:
+        print("Label images available - starting Phase 2 (Renaming)")
+        return 'phase2'
+    else:
+        print("Need to extract labels - starting Phase 1 (Label extraction)")
+        return 'phase1'
 
 
 class MainSelector:
@@ -59,6 +105,11 @@ Phase 2: GUI-Based Renaming
 • Input numeric identifiers for renaming
 • Preview and apply systematic file renaming
 • Handle duplicates and maintain logs
+
+Auto-Detect & Run (Recommended)
+• Automatically detects which phase is needed
+• Runs Phase 1 if no label images exist
+• Runs Phase 2 if label images are ready
 
 Choose how you'd like to proceed:"""
         
@@ -114,6 +165,20 @@ Choose how you'd like to proceed:"""
             width=20
         )
         both_btn.pack(pady=5)
+        
+        # Auto-detect button
+        auto_btn = tk.Button(
+            button_frame,
+            text="Auto-Detect & Run",
+            command=self._run_auto_detect,
+            font=("Arial", 12),
+            bg="#9C27B0",
+            fg="white",
+            padx=20,
+            pady=10,
+            width=20
+        )
+        auto_btn.pack(pady=5)
         
         # Exit button
         exit_btn = tk.Button(
@@ -226,7 +291,7 @@ Choose how you'd like to proceed:"""
             # Close selector window
             self.root.withdraw()
             
-            # Run Phase 2 GUI
+            # Run Phase 2 GUI (no folder pre-loading for manual phase selection)
             renaming_gui.run_phase2()
             
             # Show selector again when Phase 2 is closed
@@ -238,6 +303,61 @@ Choose how you'd like to proceed:"""
             self.status_var.set("Phase 2 error!")
             messagebox.showerror("Error", f"Phase 2 error: {str(e)}")
             print(f"Phase 2 error: {traceback.format_exc()}")
+    
+    def _run_auto_detect(self):
+        """Auto-detect which phase to run and execute it."""
+        folder_path = filedialog.askdirectory(
+            title="Select Folder with Slide Files",
+            initialdir=os.getcwd()
+        )
+        
+        if not folder_path:
+            return
+        
+        self.status_var.set("Analyzing directory...")
+        self.root.update()
+        
+        try:
+            required_phase = detect_required_phase(folder_path)
+            
+            if required_phase == 'none':
+                self.status_var.set("No WSI files found")
+                messagebox.showerror("Error", "No supported WSI files found in the selected directory.")
+                return
+            
+            elif required_phase == 'phase1':
+                self.status_var.set("Running Phase 1...")
+                self.root.update()
+                
+                # Run Phase 1
+                success = label_extractor.run_phase1(folder_path)
+                
+                if success:
+                    self.status_var.set("Phase 1 completed. Starting Phase 2...")
+                    self.root.update()
+                    
+                    # Automatically continue to Phase 2
+                    self.root.after(1000, lambda: self._continue_phase2(folder_path))
+                else:
+                    self.status_var.set("Phase 1 failed!")
+                    messagebox.showerror("Error", "Phase 1 failed. Check console for details.")
+            
+            elif required_phase == 'phase2':
+                self.status_var.set("Starting Phase 2...")
+                self.root.update()
+                
+                # Run Phase 2 directly with pre-loaded folder
+                self.root.withdraw()
+                app = renaming_gui.RenamingGUI(folder_path)
+                app.run()
+                
+                self.root.deiconify()
+                self.status_var.set("Phase 2 completed")
+        
+        except Exception as e:
+            self.status_var.set("Auto-detect error!")
+            messagebox.showerror("Error", f"Auto-detect error: {str(e)}")
+            print(f"Auto-detect error: {traceback.format_exc()}")
     
     def _run_both_phases(self):
         """Run complete workflow."""
@@ -287,9 +407,7 @@ Choose how you'd like to proceed:"""
             self.root.withdraw()
             
             # Create and run Phase 2 GUI with pre-loaded folder
-            app = renaming_gui.RenamingGUI()
-            app.folder_var.set(folder_path)
-            app._load_images()  # Auto-load images
+            app = renaming_gui.RenamingGUI(folder_path)
             app.run()
             
             # Show selector again when Phase 2 is closed
@@ -332,17 +450,59 @@ def run_phase1_cli(folder_path: str):
         return False
 
 
-def run_phase2_cli():
+def run_phase2_cli(folder_path: str = ""):
     """Run Phase 2 from command line."""
     print("Starting Phase 2: GUI for file renaming")
     
     try:
-        renaming_gui.run_phase2()
+        renaming_gui.run_phase2(folder_path)
         print("\\nPhase 2 completed!")
     
     except Exception as e:
         print(f"\\nPhase 2 error: {e}")
         print(traceback.format_exc())
+
+
+def run_auto_detect_cli(folder_path: str):
+    """Run auto-detection from command line."""
+    print(f"Auto-detecting required phase for: {folder_path}")
+    print("=" * 50)
+    
+    if not os.path.exists(folder_path):
+        print(f"Error: Folder does not exist: {folder_path}")
+        return False
+    
+    try:
+        required_phase = detect_required_phase(folder_path)
+        
+        if required_phase == 'none':
+            print("No supported WSI files found.")
+            return False
+        
+        elif required_phase == 'phase1':
+            print("\\nRunning Phase 1: Label extraction")
+            success = label_extractor.run_phase1(folder_path)
+            
+            if success:
+                print("\\nPhase 1 completed! Now starting Phase 2...")
+                # Automatically continue to Phase 2 with folder path
+                renaming_gui.run_phase2(folder_path)
+                return True
+            else:
+                print("\\nPhase 1 failed!")
+                return False
+        
+        elif required_phase == 'phase2':
+            print("\\nRunning Phase 2: File renaming")
+            renaming_gui.run_phase2(folder_path)
+            return True
+        
+        return False
+    
+    except Exception as e:
+        print(f"\\nAuto-detect error: {e}")
+        print(traceback.format_exc())
+        return False
 
 
 def main():
@@ -352,11 +512,18 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py                    # Run GUI selector
+  python main.py                    # Auto-detect and run appropriate phase
+  python main.py /path/to/slides    # Auto-detect for specific folder
   python main.py --gui              # Run GUI selector  
   python main.py --phase1 /path/to/slides  # Extract labels only
   python main.py --phase2           # Run renaming GUI only
         """
+    )
+    
+    parser.add_argument(
+        "folder",
+        nargs="?",
+        help="Folder path for auto-detection (optional)"
     )
     
     parser.add_argument(
@@ -374,7 +541,7 @@ Examples:
     parser.add_argument(
         "--gui", 
         action="store_true",
-        help="Run GUI selector (default behavior)"
+        help="Run GUI selector"
     )
     
     args = parser.parse_args()
@@ -388,11 +555,36 @@ Examples:
             # Run Phase 2 only
             run_phase2_cli()
         
-        else:
-            # Run GUI selector (default)
+        elif args.gui:
+            # Run GUI selector
             print("Starting Histology Slide Renaming Tool...")
             selector = MainSelector()
             selector.run()
+        
+        elif args.folder:
+            # Auto-detect and run for specified folder
+            run_auto_detect_cli(args.folder)
+        
+        else:
+            # Default behavior: prompt user for folder and auto-detect
+            from tkinter import filedialog
+            import tkinter as tk
+            
+            root = tk.Tk()
+            root.withdraw()
+            
+            folder_path = filedialog.askdirectory(
+                title="Select Folder with Slide Files",
+                initialdir=os.getcwd()
+            )
+            root.destroy()
+            
+            if folder_path:
+                run_auto_detect_cli(folder_path)
+            else:
+                print("No folder selected. Starting GUI selector...")
+                selector = MainSelector()
+                selector.run()
     
     except KeyboardInterrupt:
         print("\\n\\nApplication interrupted by user")

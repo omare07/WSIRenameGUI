@@ -1,19 +1,27 @@
 # Histology Slide Renaming Tool
 
-A comprehensive Python application for histology slide review and systematic file renaming. This tool streamlines the workflow of processing whole-slide images by extracting label images and providing an intuitive GUI for renaming based on visual review.
+A comprehensive Python application for histology slide review and systematic file renaming. This tool streamlines the workflow of processing whole-slide images by extracting label images and providing an intuitive GUI for renaming based on visual review. Features intelligent auto-detection to eliminate the need for manual phase selection.
 
 ## Features
+
+### Intelligent Auto-Detection (NEW!)
+- **Automatic Phase Selection**: Automatically determines whether to run Phase 1 or Phase 2
+- **File Count Analysis**: Compares WSI files vs existing label images
+- **Smart Workflow**: Seamlessly transitions from Phase 1 to Phase 2 when needed
+- **No Manual Selection**: Eliminates the need to choose phases manually
 
 ### Phase 1: Label Image Extraction
 - **Multi-format Support**: Works with .svs, .ndpi, .scn, .vms, .vmu, .mrxs files
 - **Automatic Label Extraction**: Uses OpenSlide to extract label images from slides
 - **Manual Crop Selection**: Interactive GUI for selecting region of interest on first image
+- **Parallel Processing**: Processes slides in parallel batches of 12 for maximum speed
 - **Batch Processing**: Applies same crop to all slides automatically
 - **Image Processing**: Rotates labels by 270° for optimal viewing
 - **Error Handling**: Moves unreadable slides to separate folder
 
 ### Phase 2: GUI-Based Renaming
 - **Visual Review**: Display label images with easy navigation
+- **Smart Prefix**: Auto-sets model name based on directory name (e.g., "KPC12-1" → "KPC12-1_")
 - **Smart Renaming**: Input numeric identifiers with automatic formatting
 - **Preview System**: See new filenames before applying changes
 - **Duplicate Handling**: Automatic suffix addition for duplicate names
@@ -51,12 +59,16 @@ pip install openslide-python pillow pandas numpy opencv-python
 
 ### Quick Start
 ```bash
-# Run the complete application with GUI selector
+# Auto-detect and run appropriate phase (RECOMMENDED)
 python main.py
 
-# Or run specific phases
+# Auto-detect for specific folder
+python main.py /path/to/slides
+
+# Manual phase selection (advanced users)
 python main.py --phase1 /path/to/slides    # Extract labels only
 python main.py --phase2                     # Renaming GUI only
+python main.py --gui                        # GUI selector
 ```
 
 ### Detailed Workflow
@@ -65,7 +77,16 @@ python main.py --phase2                     # Renaming GUI only
 - Place all slide files (.svs, .ndpi, .scn, etc.) in a single folder
 - Ensure files are accessible and not corrupted
 
-#### Step 2: Extract Label Images (Phase 1)
+#### Step 2: Run Auto-Detection (Recommended)
+1. Run `python main.py` and select your slide folder
+2. The application automatically detects what needs to be done:
+   - **No label images found**: Runs Phase 1 (label extraction) then Phase 2
+   - **Label images exist**: Runs Phase 2 (renaming) directly
+3. Follow on-screen prompts for your specific workflow
+
+#### Alternative: Manual Phase Selection
+
+**Extract Label Images (Phase 1)**
 1. Run the application and select "Phase 1: Extract Labels"
 2. Choose your slide folder
 3. The first slide will open for crop selection:
@@ -91,7 +112,7 @@ python main.py --phase2                     # Renaming GUI only
 2. Configure settings:
    - **Slide Folder**: Folder containing original slides
    - **Output Folder**: Where renamed files will be moved
-   - **Prefix**: Text prefix for new names (e.g., "KPC12-1_")
+   - **Prefix**: Text prefix for new names (auto-set based on folder name, e.g., "KPC12-1_")
    - **Extension**: File extension (.ndpi, .svs, etc.)
 3. Load images and navigate through labels
 4. For each image:
@@ -112,6 +133,7 @@ python main.py --phase2                     # Renaming GUI only
 DEFAULT_PREFIX = "KPC12-1_"          # Default filename prefix
 DEFAULT_LABEL_LEVEL = 6              # OpenSlide level for label extraction
 DEFAULT_ROTATION_ANGLE = 270         # Rotation angle for labels
+DEFAULT_BATCH_SIZE = 12              # Parallel processing batch size
 SKIP_PREFIXES = ['.', 'T']          # Skip files starting with these
 ```
 
@@ -137,18 +159,14 @@ histology-renaming-tool/
 
 ### Command Line Options
 ```bash
-# Run GUI selector (default)
+# Auto-detect and run (default, recommended)
 python main.py
-python main.py --gui
+python main.py /path/to/slides
 
-# Extract labels from specific folder
-python main.py --phase1 "/path/to/slide/folder"
-
-# Open renaming GUI directly
-python main.py --phase2
-
-# Run complete workflow
-python main.py  # Then select "Run Complete Workflow"
+# Manual phase selection
+python main.py --gui                        # GUI selector
+python main.py --phase1 /path/to/slides    # Extract labels only
+python main.py --phase2                     # Renaming GUI only
 ```
 
 ### Session Management
@@ -197,10 +215,12 @@ Common values: 4, 5, 6, 7
 ```
 
 ### Performance Tips
-- **Large Datasets**: Process in smaller batches
-- **Memory Usage**: Close other applications during processing
+- **Parallel Processing**: Phase 1 now uses parallel processing in batches of 12 slides
+- **CPU Utilization**: Adjust `DEFAULT_BATCH_SIZE` in config.py based on your CPU cores
+- **Memory Usage**: Monitor RAM usage with large datasets; reduce batch size if needed
 - **Storage Space**: Ensure adequate disk space for output
-- **Network Drives**: Copy files locally for better performance
+- **Network Drives**: Copy files locally for much better performance
+- **SSD vs HDD**: SSDs dramatically improve processing speed for large datasets
 
 ## Output Files
 
@@ -256,6 +276,14 @@ For issues, questions, or contributions:
 
 ---
 
-**Version**: 1.0  
+**Version**: 2.0  
 **Author**: Histology Tools Development Team  
 **Last Updated**: 2024
+
+### What's New in Version 2.0
+- **Intelligent Auto-Detection**: Automatically determines which phase to run
+- **Smart Prefix**: Auto-sets model name based on directory name
+- **Parallel Processing**: Phase 1 now processes slides in parallel batches for 3-12x speed improvement
+- **Streamlined Workflow**: No manual phase selection required
+- **Enhanced User Experience**: Simplified command-line interface
+- **Better Performance**: Configurable batch sizes for optimal CPU utilization
