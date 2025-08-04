@@ -440,6 +440,7 @@ class LabelExtractor:
         self.label_folder = os.path.join(slide_folder, config.LABEL_FOLDER)
         self.cannot_open_folder = os.path.join(slide_folder, config.CANNOT_OPEN_FOLDER)
         self.crop_coords = None
+        self.batch_size = config.DEFAULT_BATCH_SIZE  # Can be overridden via configuration
         
         # Create output directories
         utils.create_directory(self.label_folder)
@@ -476,7 +477,7 @@ class LabelExtractor:
             print("Only one slide found - processing complete!")
             return True
         
-        print(f"Starting to process remaining {len(remaining_slides)} slides in parallel batches of {config.DEFAULT_BATCH_SIZE}...")
+        print(f"Starting to process remaining {len(remaining_slides)} slides in parallel batches of {self.batch_size}...")
         
         # Process remaining slides in parallel batches
         self._process_slides_in_batches(remaining_slides)
@@ -517,35 +518,49 @@ class LabelExtractor:
             # We have a whole slide overview - need to crop the label area
             print("Using whole slide overview - crop selection needed")
             
-            # Save temporary label image for crop selection
-            temp_label_path = os.path.join(self.label_folder, "temp_label.jpg")
-            label_image.save(temp_label_path)
-            
-            try:
-                # Get crop selection from user
-                crop_selector = CropSelector(temp_label_path)
-                self.crop_coords = crop_selector.select_crop_region()
+            # Check if crop coordinates are already set (from configuration)
+            if self.crop_coords is not None:
+                print(f"Using preset crop coordinates: {self.crop_coords}")
+            else:
+                print("No preset crop coordinates - prompting user for crop selection")
                 
-                # If PhotoImage-based crop selector failed, try simple method
-                if self.crop_coords is None:
-                    print("PhotoImage crop selector failed, trying simple coordinate method...")
-                    from simple_crop import SimpleCropSelector
-                    simple_selector = SimpleCropSelector(temp_label_path, label_image.size)
-                    self.crop_coords = simple_selector.select_crop_region()
+                # Save temporary label image for crop selection
+                temp_label_path = os.path.join(self.label_folder, "temp_label.jpg")
+                label_image.save(temp_label_path)
                 
-                if self.crop_coords is None:
-                    print("Crop selection cancelled")
+                try:
+                    # Get crop selection from user
+                    crop_selector = CropSelector(temp_label_path)
+                    self.crop_coords = crop_selector.select_crop_region()
+                    
+                    # If PhotoImage-based crop selector failed, try simple method
+                    if self.crop_coords is None:
+                        print("PhotoImage crop selector failed, trying simple coordinate method...")
+                        from simple_crop import SimpleCropSelector
+                        simple_selector = SimpleCropSelector(temp_label_path, label_image.size)
+                        self.crop_coords = simple_selector.select_crop_region()
+                    
+                    # Remove temporary file
                     os.remove(temp_label_path)
+                    
+                    if self.crop_coords is None:
+                        print("Crop selection cancelled")
+                        return False
+                        
+                except Exception as e:
+                    print(f"Error during crop selection: {e}")
+                    if os.path.exists(temp_label_path):
+                        os.remove(temp_label_path)
                     return False
                 
-                print(f"Proceeding with crop coordinates: {self.crop_coords}")
-                
-                # Apply crop and rotation to first image
-                print("Applying crop and rotation to first image...")
+            # Now apply crop and rotation to first image (regardless of how we got the crop coords)
+            print(f"Proceeding with crop coordinates: {self.crop_coords}")
+            print("Applying crop and rotation to first image...")
+            
+            try:
                 processed_image = self._process_label_image(label_image, apply_crop=True)
                 if processed_image is None:
                     print("Failed to process label image")
-                    os.remove(temp_label_path)
                     return False
                 
                 print("Processed image successfully")
@@ -556,21 +571,16 @@ class LabelExtractor:
                 print(f"Saving processed image to: {output_path}")
                 processed_image.save(output_path, "JPEG", quality=90)
                 
-                # Remove temporary file
-                os.remove(temp_label_path)
-                
                 print(f"First slide processed successfully. Crop region: {self.crop_coords}")
                 return True
                 
             except Exception as e:
                 print(f"Error processing first slide: {e}")
-                if os.path.exists(temp_label_path):
-                    os.remove(temp_label_path)
                 return False
     
     def _process_slides_in_batches(self, slide_files: List[str]):
         """Process slides in parallel batches."""
-        batch_size = config.DEFAULT_BATCH_SIZE
+        batch_size = self.batch_size
         total_slides = len(slide_files)
         successful = 0
         failed = 0
@@ -779,6 +789,36 @@ def run_phase1(slide_folder: str) -> bool:
         return False
     
     extractor = LabelExtractor(slide_folder)
+    return extractor.extract_all_labels()
+
+
+def run_phase1_with_config(slide_folder: str, config_data: dict) -> bool:
+    """Run Phase 1: Label Image Extraction with configuration."""
+    if not os.path.exists(slide_folder):
+        print(f"Slide folder does not exist: {slide_folder}")
+        return False
+    
+    print(f"Running Phase 1 with configuration:")
+    print(f"  - Use default crop: {config_data.get('use_default_crop', True)}")
+    print(f"  - Batch size: {config_data.get('batch_size', config.DEFAULT_BATCH_SIZE)}")
+    
+    # Create extractor with configuration
+    extractor = LabelExtractor(slide_folder)
+    
+    # Configure batch size
+    if 'batch_size' in config_data:
+        extractor.batch_size = config_data['batch_size']
+    
+    # Configure crop settings
+    if config_data.get('use_default_crop', True):
+        # Use the default crop coordinates
+        extractor.crop_coords = config_data.get('crop_coords', [10, 13, 578, 732])
+        print(f"  - Using default crop coordinates: {extractor.crop_coords}")
+    else:
+        # Let user select crop region manually (existing behavior)
+        print("  - Manual crop selection will be prompted")
+        extractor.crop_coords = None
+    
     return extractor.extract_all_labels()
 
 

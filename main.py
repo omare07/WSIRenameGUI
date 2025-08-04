@@ -25,11 +25,12 @@ import config
 import label_extractor
 import renaming_gui
 import utils
+import setup_screen
 
 
 def detect_required_phase(folder_path: str) -> str:
     """
-    Automatically detect which phase should be run based on file counts.
+    Automatically detect which phase should be run based on exact file correspondence.
     
     Args:
         folder_path: Path to the directory containing WSI files
@@ -42,7 +43,7 @@ def detect_required_phase(folder_path: str) -> str:
     if not os.path.exists(folder_path):
         return 'none'
     
-    # Count WSI files in the main directory
+    # Get WSI files in the main directory
     wsi_files = utils.get_slide_files(folder_path)
     wsi_count = len(wsi_files)
     
@@ -50,22 +51,38 @@ def detect_required_phase(folder_path: str) -> str:
         print("No supported WSI files found in the directory.")
         return 'none'
     
-    # Check for label image directory and count jpg files
+    # Check for label image directory
     label_folder = os.path.join(folder_path, config.LABEL_FOLDER)
-    jpg_count = 0
     
-    if os.path.exists(label_folder):
-        for file in os.listdir(label_folder):
-            if file.lower().endswith('.jpg') and not utils.should_skip_file(file):
-                jpg_count += 1
+    if not os.path.exists(label_folder):
+        print(f"Found {wsi_count} WSI files and 0 label images")
+        print("Need to extract labels - starting Phase 1 (Label extraction)")
+        return 'phase1'
     
-    print(f"Found {wsi_count} WSI files and {jpg_count} label images")
+    # Smart correspondence check: each WSI file should have matching JPEG label
+    matched_pairs = 0
+    missing_labels = []
     
-    # Determine which phase to run
-    if jpg_count >= wsi_count:
-        print("Label images available - starting Phase 2 (Renaming)")
+    for wsi_file in wsi_files:
+        wsi_base = os.path.splitext(os.path.basename(wsi_file))[0]
+        expected_label = os.path.join(label_folder, f"{wsi_base}.jpg")
+        
+        if os.path.exists(expected_label) and not utils.should_skip_file(f"{wsi_base}.jpg"):
+            matched_pairs += 1
+        else:
+            missing_labels.append(wsi_base)
+    
+    print(f"Found {wsi_count} WSI files and {matched_pairs} matching label images")
+    
+    # Perfect 1:1 correspondence means Phase 1 is complete
+    if matched_pairs == wsi_count:
+        print("Perfect file correspondence found - starting Phase 2 (Renaming)")
         return 'phase2'
     else:
+        if missing_labels:
+            print(f"Missing label images for: {', '.join(missing_labels[:5])}")
+            if len(missing_labels) > 5:
+                print(f"... and {len(missing_labels) - 5} more files")
         print("Need to extract labels - starting Phase 1 (Label extraction)")
         return 'phase1'
 
@@ -76,10 +93,32 @@ class MainSelector:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Histology Slide Renaming Tool")
-        self.root.geometry("600x400")
-        self.root.resizable(False, False)
+        
+        # Make window resizable
+        self.root.resizable(True, True)
+        self.root.minsize(550, 400)
+        
+        # Center window on screen
+        self._center_window()
         
         self._setup_gui()
+    
+    def _center_window(self):
+        """Center the window on screen with appropriate size."""
+        # Get screen dimensions
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        
+        # Calculate window size (60% of screen or max 700x500)
+        window_width = min(int(screen_width * 0.6), 700)
+        window_height = min(int(screen_height * 0.7), 500)
+        
+        # Calculate position to center window
+        x = (screen_width - window_width) // 2
+        y = (screen_height - window_height) // 2
+        
+        # Set geometry
+        self.root.geometry(f"{window_width}x{window_height}+{x}+{y}")
     
     def _setup_gui(self):
         """Setup the main selector GUI."""
@@ -166,13 +205,27 @@ Choose how you'd like to proceed:"""
         )
         both_btn.pack(pady=5)
         
+        # Setup-guided workflow button (recommended)
+        setup_btn = tk.Button(
+            button_frame,
+            text="Setup-Guided Workflow ⭐",
+            command=self._run_setup_workflow,
+            font=("Arial", 12, "bold"),
+            bg="#9C27B0",
+            fg="white",
+            padx=20,
+            pady=10,
+            width=20
+        )
+        setup_btn.pack(pady=5)
+        
         # Auto-detect button
         auto_btn = tk.Button(
             button_frame,
             text="Auto-Detect & Run",
             command=self._run_auto_detect,
             font=("Arial", 12),
-            bg="#9C27B0",
+            bg="#607D8B",
             fg="white",
             padx=20,
             pady=10,
@@ -202,6 +255,16 @@ Choose how you'd like to proceed:"""
             anchor=tk.W
         )
         status_label.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=5)
+        
+        # Help hint
+        hint_label = tk.Label(
+            self.root,
+            text="💡 Window is resizable • Drag corners/edges to adjust size",
+            font=("Arial", 8),
+            fg="lightgray",
+            anchor=tk.CENTER
+        )
+        hint_label.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
     
     def _run_phase1(self):
         """Run Phase 1 with folder selection."""
@@ -400,6 +463,32 @@ Choose how you'd like to proceed:"""
             messagebox.showerror("Error", f"Workflow error: {str(e)}")
             print(f"Workflow error: {traceback.format_exc()}")
     
+    def _run_setup_workflow(self):
+        """Run the setup-guided workflow."""
+        self.status_var.set("Starting setup...")
+        self.root.update()
+        
+        try:
+            # Hide selector window during setup
+            self.root.withdraw()
+            
+            # Run setup-guided workflow
+            success = run_setup_guided_workflow()
+            
+            # Show selector again
+            self.root.deiconify()
+            
+            if success:
+                self.status_var.set("Setup-guided workflow completed!")
+            else:
+                self.status_var.set("Setup-guided workflow cancelled or failed")
+        
+        except Exception as e:
+            self.root.deiconify()
+            self.status_var.set("Setup workflow error!")
+            messagebox.showerror("Error", f"Setup workflow error: {str(e)}")
+            print(f"Setup workflow error: {traceback.format_exc()}")
+    
     def _continue_phase2(self, folder_path):
         """Continue to Phase 2 after Phase 1 completion."""
         try:
@@ -461,6 +550,52 @@ def run_phase2_cli(folder_path: str = ""):
     except Exception as e:
         print(f"\\nPhase 2 error: {e}")
         print(traceback.format_exc())
+
+
+def run_setup_guided_workflow():
+    """Run the setup-guided workflow."""
+    print("Starting setup-guided workflow...")
+    
+    # Run setup screen
+    config_data = setup_screen.run_setup()
+    if not config_data:
+        print("Setup cancelled by user.")
+        return False
+    
+    folder_path = config_data['folder_path']
+    print(f"Processing folder: {folder_path}")
+    
+    try:
+        required_phase = detect_required_phase(folder_path)
+        
+        if required_phase == 'none':
+            print("No supported WSI files found.")
+            return False
+        
+        elif required_phase == 'phase1':
+            print("\\nRunning Phase 1: Label extraction with configuration...")
+            success = label_extractor.run_phase1_with_config(folder_path, config_data)
+            
+            if success:
+                print("\\nPhase 1 completed! Now starting Phase 2...")
+                # Automatically continue to Phase 2 with folder path and config
+                renaming_gui.run_phase2_with_config(folder_path, config_data)
+                return True
+            else:
+                print("\\nPhase 1 failed!")
+                return False
+        
+        elif required_phase == 'phase2':
+            print("\\nRunning Phase 2: File renaming with configuration...")
+            renaming_gui.run_phase2_with_config(folder_path, config_data)
+            return True
+        
+        return False
+    
+    except Exception as e:
+        print(f"\\nSetup-guided workflow error: {e}")
+        print(traceback.format_exc())
+        return False
 
 
 def run_auto_detect_cli(folder_path: str):
@@ -566,23 +701,11 @@ Examples:
             run_auto_detect_cli(args.folder)
         
         else:
-            # Default behavior: prompt user for folder and auto-detect
-            from tkinter import filedialog
-            import tkinter as tk
-            
-            root = tk.Tk()
-            root.withdraw()
-            
-            folder_path = filedialog.askdirectory(
-                title="Select Folder with Slide Files",
-                initialdir=os.getcwd()
-            )
-            root.destroy()
-            
-            if folder_path:
-                run_auto_detect_cli(folder_path)
-            else:
-                print("No folder selected. Starting GUI selector...")
+            # Default behavior: run setup-guided workflow
+            print("Starting setup-guided workflow...")
+            success = run_setup_guided_workflow()
+            if not success:
+                print("Setup cancelled or failed. Starting GUI selector...")
                 selector = MainSelector()
                 selector.run()
     

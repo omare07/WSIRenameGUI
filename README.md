@@ -1,33 +1,48 @@
 # Histology Slide Renaming Tool
 
-A comprehensive Python application for histology slide review and systematic file renaming. This tool streamlines the workflow of processing whole-slide images by extracting label images and providing an intuitive GUI for renaming based on visual review. Features intelligent auto-detection to eliminate the need for manual phase selection.
+A comprehensive Python application for histology slide review and systematic file renaming. This tool streamlines the workflow of processing whole-slide images by extracting label images and providing an intuitive GUI for renaming based on visual review. Features intelligent auto-detection, setup-guided workflow, and advanced performance optimizations.
 
 ## Features
 
-### Intelligent Auto-Detection (NEW!)
+### Setup-Guided Workflow (NEW in v2.0!)
+- **Interactive Setup Screen**: Comprehensive configuration before processing begins
+- **Crop Preset Selection**: Choose default crop coordinates or manual selection
+- **Slide Naming Configuration**: Define amount per slide and skip factor for systematic naming
+- **Batch Size Customization**: Optimize processing speed for your system
+- **Runtime Adjustments**: Modify naming configuration during Phase 2 processing
+
+### Intelligent Auto-Detection
 - **Automatic Phase Selection**: Automatically determines whether to run Phase 1 or Phase 2
-- **File Count Analysis**: Compares WSI files vs existing label images
+- **1:1 Correspondence Check**: Verifies exact file matching between WSI and label images
 - **Smart Workflow**: Seamlessly transitions from Phase 1 to Phase 2 when needed
-- **No Manual Selection**: Eliminates the need to choose phases manually
+- **Resume Capability**: Skip Phase 1 if perfect correspondence already exists
 
 ### Phase 1: Label Image Extraction
 - **Multi-format Support**: Works with .svs, .ndpi, .scn, .vms, .vmu, .mrxs files
 - **Automatic Label Extraction**: Uses OpenSlide to extract label images from slides
-- **Manual Crop Selection**: Interactive GUI for selecting region of interest on first image
-- **Parallel Processing**: Processes slides in parallel batches of 12 for maximum speed
+- **Smart Crop Selection**: Use preset coordinates or interactive GUI selection
+- **Parallel Processing**: Configurable batch processing for optimal performance
 - **Batch Processing**: Applies same crop to all slides automatically
 - **Image Processing**: Rotates labels by 270° for optimal viewing
 - **Error Handling**: Moves unreadable slides to separate folder
 
-### Phase 2: GUI-Based Renaming
-- **Visual Review**: Display label images with easy navigation
-- **Smart Prefix**: Auto-sets model name based on directory name (e.g., "KPC12-1" → "KPC12-1_")
-- **Smart Renaming**: Input numeric identifiers with automatic formatting
-- **Preview System**: See new filenames before applying changes
-- **Duplicate Handling**: Automatic suffix addition for duplicate names
-- **Batch Operations**: Rename all files at once with progress tracking
-- **Session Management**: Save and load renaming sessions
-- **Comprehensive Logging**: CSV logs of all renaming actions
+### Phase 2: Advanced GUI-Based Renaming (ENHANCED in v2.0!)
+- **Split-Pane Interface**: Simultaneous image viewing and data table management
+- **Dynamic CSV Table**: Real-time table showing Index, Label Image, Identifier, New Filename, and Status
+- **Interactive Navigation**: Click table rows to jump to specific images
+- **Enhanced Keyboard Controls**: Left/Right arrow keys for navigation with focus-aware input
+- **Dual File Renaming**: Automatically renames both WSI files and corresponding JPEG labels
+- **Smart Auto-Population**: Intelligent sequence generation with configurable skip patterns
+- **Edit Persistence**: User edits preserved and propagated intelligently
+- **Non-Destructive Editing**: Changes only affect proceeding files within defined buffers
+- **Performance Optimized**: Cached operations and throttled updates for smooth operation
+
+### Advanced Renaming Logic (NEW in v2.0!)
+- **Combined Identifiers**: Generate compound names (e.g., "001_002") for multiple slides per specimen
+- **Smart Continuation**: Adjust numbering sequence based on user edits
+- **Skip Factor Implementation**: Configurable numerical gaps in sequence (skip 003, use 004_005)
+- **Buffer-Based Updates**: Intelligent propagation prevents destructive overwrites
+- **Explicit vs Auto-Populated**: Track user intentions to preserve manual edits
 
 ## Requirements
 
@@ -57,74 +72,80 @@ pip install openslide-python pillow pandas numpy opencv-python
 
 ## Usage
 
-### Quick Start
+### Quick Start (Setup-Guided Workflow - RECOMMENDED)
 ```bash
-# Auto-detect and run appropriate phase (RECOMMENDED)
+# Run setup-guided workflow (NEW default behavior)
 python main.py
 
-# Auto-detect for specific folder
+# Setup-guided workflow for specific folder
 python main.py /path/to/slides
 
-# Manual phase selection (advanced users)
+# Advanced users - manual options
 python main.py --phase1 /path/to/slides    # Extract labels only
 python main.py --phase2                     # Renaming GUI only
 python main.py --gui                        # GUI selector
 ```
 
-### Detailed Workflow
+### Setup-Guided Workflow
 
-#### Step 1: Prepare Your Slides
-- Place all slide files (.svs, .ndpi, .scn, etc.) in a single folder
-- Ensure files are accessible and not corrupted
+#### Step 1: Initial Configuration
+1. Run `python main.py` to launch the setup screen
+2. Configure your processing parameters:
+   - **Crop Preset**: Choose default crop (10, 13, 578, 732) or manual selection
+   - **Slide Naming Order**: 
+     - Amount per slide (e.g., 2 for combined naming like "001_002")
+     - Skip factor (e.g., 1 to skip numerical values: 001_002, skip 003, then 004_005)
+   - **Batch Size**: Processing batch size (default: 12)
+3. Click "Start Processing" to begin
 
-#### Step 2: Run Auto-Detection (Recommended)
-1. Run `python main.py` and select your slide folder
-2. The application automatically detects what needs to be done:
-   - **No label images found**: Runs Phase 1 (label extraction) then Phase 2
-   - **Label images exist**: Runs Phase 2 (renaming) directly
-3. Follow on-screen prompts for your specific workflow
+#### Step 2: Automatic Processing
+- The application automatically detects what needs to be done:
+  - **No label images or incomplete set**: Runs Phase 1 then Phase 2
+  - **Perfect 1:1 correspondence exists**: Runs Phase 2 directly
+- Phase 1 (if needed): Uses your crop preset for efficient batch processing
+- Phase 2: Launches with your naming configuration pre-loaded
 
-#### Alternative: Manual Phase Selection
+#### Step 3: Advanced Renaming Interface
+1. **Split-Pane Interface**: View images on left, manage data table on right
+2. **Navigation Options**:
+   - Use Previous/Next buttons
+   - Click table rows to jump to specific images
+   - Use Left/Right arrow keys for keyboard navigation
+3. **Smart Auto-Population**: Numbers auto-populate based on your configuration
+4. **Manual Overrides**: Edit any identifier - sequence intelligently adjusts
+5. **Real-Time Updates**: Table updates immediately to reflect changes
+6. **Runtime Configuration**: Adjust "Amount per slide" and "Skip factor" as needed
 
-**Extract Label Images (Phase 1)**
-1. Run the application and select "Phase 1: Extract Labels"
-2. Choose your slide folder
-3. The first slide will open for crop selection:
-   - Click and drag to select the region of interest
-   - This region will be applied to all slides
-   - Click "Confirm Crop" to proceed
-4. Wait for processing to complete
+### Example Naming Sequences
+With **Amount per slide: 2** and **Skip factor: 1**:
+- File 1: `KPC12-1_001_002.ndpi`
+- File 2: `KPC12-1_004_005.ndpi` (skipped 003)
+- File 3: `KPC12-1_006_007.ndpi`
 
-**Output Structure:**
-```
-[Your Slide Folder]/
-├── slide1.ndpi
-├── slide2.ndpi
-├── label_image/
-│   ├── slide1.jpg
-│   └── slide2.jpg
-└── cannot_open/
-    └── corrupted_slide.ndpi
-```
+With **Amount per slide: 1** and **Skip factor: 2**:
+- File 1: `KPC12-1_001.ndpi`
+- File 2: `KPC12-1_004.ndpi` (skipped 002, 003)
+- File 3: `KPC12-1_007.ndpi` (skipped 005, 006)
 
-#### Step 3: Review and Rename (Phase 2)
-1. Run "Phase 2: Rename Files" or continue from Phase 1
-2. Configure settings:
-   - **Slide Folder**: Folder containing original slides
-   - **Output Folder**: Where renamed files will be moved
-   - **Prefix**: Text prefix for new names (auto-set based on folder name, e.g., "KPC12-1_")
-   - **Extension**: File extension (.ndpi, .svs, etc.)
-3. Load images and navigate through labels
-4. For each image:
-   - Enter numeric identifier (e.g., "002 001" or "002001")
-   - Preview the new filename
-   - Click "Apply to Current" or press Enter
-5. Review summary and click "Rename All Files"
+### Advanced Features
 
-### Example Renaming
-- **Input**: `002 001` or `002001`
-- **Output**: `KPC12-1_002_001.ndpi`
-- **Duplicate**: `KPC12-1_002_001_b.ndpi`
+#### Dual File Renaming
+When renaming `slide001.ndpi` to `KPC12-1_001_002.ndpi`:
+- **WSI File**: `slide001.ndpi` → `KPC12-1_001_002.ndpi`
+- **Label File**: `slide001.jpg` → `KPC12-1_001_002.jpg`
+- **Graceful Handling**: Missing label files generate warnings but don't fail the process
+
+#### Smart Sequence Adjustment
+- **User Edit**: Change `015_016` to `031_032`
+- **Auto-Continuation**: Next file becomes `034_035`
+- **Intelligent Propagation**: Updates all subsequent non-edited files
+- **Boundary Respect**: Stops at explicitly renamed files to prevent overwrites
+
+#### Performance Optimizations
+- **Cached File Operations**: Instant lookups for repeated operations
+- **Selective Table Updates**: Only update changed rows for smooth performance
+- **Throttled Refreshes**: Batch GUI updates to prevent blocking
+- **Pre-built Mappings**: Build file relationships upfront for faster navigation
 
 ## Configuration
 
@@ -135,12 +156,20 @@ DEFAULT_LABEL_LEVEL = 6              # OpenSlide level for label extraction
 DEFAULT_ROTATION_ANGLE = 270         # Rotation angle for labels
 DEFAULT_BATCH_SIZE = 12              # Parallel processing batch size
 SKIP_PREFIXES = ['.', 'T']          # Skip files starting with these
+DEFAULT_CROP_COORDS = (10, 13, 578, 732)  # Default crop coordinates
 ```
 
-### Customization
-- Modify `config.py` to change default settings
-- GUI allows runtime configuration of most settings
-- Session files store user preferences
+### Workflow Configuration (workflow_config.json)
+Generated automatically by setup screen:
+```json
+{
+  "use_default_crop": true,
+  "crop_coords": [10, 13, 578, 732],
+  "amount_per_slide": 2,
+  "skip_factor": 1,
+  "batch_size": 12
+}
+```
 
 ## File Structure
 
@@ -150,7 +179,8 @@ histology-renaming-tool/
 ├── config.py              # Configuration settings
 ├── utils.py               # Utility functions
 ├── label_extractor.py     # Phase 1: Label extraction
-├── renaming_gui.py        # Phase 2: Renaming GUI
+├── renaming_gui.py        # Phase 2: Advanced renaming GUI
+├── setup_screen.py        # Setup-guided workflow interface
 ├── requirements.txt       # Python dependencies
 └── README.md             # This file
 ```
@@ -159,7 +189,7 @@ histology-renaming-tool/
 
 ### Command Line Options
 ```bash
-# Auto-detect and run (default, recommended)
+# Setup-guided workflow (default, recommended)
 python main.py
 python main.py /path/to/slides
 
@@ -173,13 +203,13 @@ python main.py --phase2                     # Renaming GUI only
 - **Save Session**: Stores current renaming mappings to JSON file
 - **Load Session**: Restores previous session state
 - **Auto-Resume**: GUI remembers applied renames during session
+- **Configuration Persistence**: Setup preferences saved in workflow_config.json
 
-### Batch Processing Tips
-1. **Organize Slides**: Group related slides in folders
-2. **Consistent Naming**: Use systematic numeric identifiers
-3. **Preview Before Rename**: Always review the summary
-4. **Backup Originals**: Keep copies of original files
-5. **Check Logs**: Review CSV logs for audit trails
+### Keyboard Shortcuts
+- **Left/Right Arrows**: Navigate between images (when not in text fields)
+- **Enter**: Apply current rename and advance to next image
+- **Tab**: Move between interface elements
+- **Click Table Rows**: Jump to specific image
 
 ## Troubleshooting
 
@@ -193,34 +223,36 @@ macOS: brew install openslide
 Linux: sudo apt-get install openslide-tools
 ```
 
-**Cannot Open Slide Files**
+**Performance Issues**
 ```
-Solution: Check file permissions and format support
-Supported: .svs, .ndpi, .scn, .vms, .vmu, .mrxs
-Files moved to cannot_open/ folder automatically
-```
-
-**GUI Not Responding**
-```
-Solution: Ensure tkinter is installed
-Usually included with Python, but may need separate install on Linux
-sudo apt-get install python3-tk
+Solution: Adjust batch size and table buffer in configuration
+- Reduce batch_size for limited memory systems
+- Increase table_buffer_size for smoother navigation
+- Use local storage instead of network drives
 ```
 
-**Label Extraction Fails**
+**GUI Responsiveness**
 ```
-Solution: Try different label extraction level
-Modify DEFAULT_LABEL_LEVEL in config.py
-Common values: 4, 5, 6, 7
+Solution: Performance optimizations implemented in v2.0
+- Cached file operations reduce repeated disk access
+- Throttled table updates prevent GUI blocking
+- Selective row updates improve responsiveness
+```
+
+**Naming Sequence Issues**
+```
+Solution: Check configuration parameters
+- Verify amount_per_slide matches your requirements
+- Ensure skip_factor represents numerical gaps, not file gaps
+- Use setup screen to test naming preview before processing
 ```
 
 ### Performance Tips
-- **Parallel Processing**: Phase 1 now uses parallel processing in batches of 12 slides
-- **CPU Utilization**: Adjust `DEFAULT_BATCH_SIZE` in config.py based on your CPU cores
-- **Memory Usage**: Monitor RAM usage with large datasets; reduce batch size if needed
-- **Storage Space**: Ensure adequate disk space for output
-- **Network Drives**: Copy files locally for much better performance
-- **SSD vs HDD**: SSDs dramatically improve processing speed for large datasets
+- **Local Storage**: Copy files locally for optimal performance
+- **Batch Size**: Adjust based on CPU cores and available memory
+- **Table Buffer**: Increase for smoother navigation with large datasets
+- **SSD Storage**: Use solid-state drives for significantly faster processing
+- **Memory**: Ensure adequate RAM for your dataset size
 
 ## Output Files
 
@@ -234,18 +266,17 @@ Common values: 4, 5, 6, 7
 - **Location**: User-specified output folder
 - **Format**: Original format preserved
 - **Naming**: `[prefix][identifier][extension]`
-- **Duplicates**: Automatic suffix handling
+- **Dual Renaming**: Both WSI and corresponding JPEG files renamed
 
 ### Log Files
 - **Filename**: `renaming_log.csv`
-- **Contents**: Original file, new file, timestamp
+- **Contents**: Original file, new file, timestamp, label file
 - **Location**: Output folder
 - **Format**: CSV for easy analysis
 
-### Session Files
-- **Format**: JSON
-- **Contents**: Folder paths, settings, rename mappings
-- **Usage**: Resume interrupted sessions
+### Configuration Files
+- **workflow_config.json**: Setup screen preferences
+- **Session files**: JSON format for resume capability
 
 ## Contributing
 
@@ -280,10 +311,31 @@ For issues, questions, or contributions:
 **Author**: Histology Tools Development Team  
 **Last Updated**: 2024
 
-### What's New in Version 2.0
-- **Intelligent Auto-Detection**: Automatically determines which phase to run
-- **Smart Prefix**: Auto-sets model name based on directory name
-- **Parallel Processing**: Phase 1 now processes slides in parallel batches for 3-12x speed improvement
-- **Streamlined Workflow**: No manual phase selection required
-- **Enhanced User Experience**: Simplified command-line interface
-- **Better Performance**: Configurable batch sizes for optimal CPU utilization
+## What's New in Version 2.0
+
+### Major New Features
+- **Setup-Guided Workflow**: Interactive configuration screen before processing
+- **Split-Pane Interface**: Simultaneous image viewing and table management
+- **Dynamic CSV Table**: Real-time data table with Index, Label Image, Identifier, New Filename, and Status
+- **Interactive Navigation**: Click table rows to jump to images, enhanced keyboard controls
+- **Dual File Renaming**: Automatic renaming of both WSI and JPEG label files
+- **Advanced Naming Logic**: Combined identifiers, skip factors, and smart sequence continuation
+
+### Enhanced Performance
+- **Cached Operations**: File system lookups, identifier extraction, and slide path mapping
+- **Selective Updates**: Only update changed table rows for improved responsiveness
+- **Throttled Refreshes**: Batch GUI updates to prevent interface blocking
+- **Optimized Navigation**: Pre-built file mappings for instant access
+
+### Improved User Experience
+- **Setup Screen**: Configure crop presets, naming patterns, and batch sizes before processing
+- **Smart Auto-Population**: Automatic identifier generation with intelligent sequence management
+- **Edit Persistence**: User changes preserved and intelligently propagated
+- **Non-Destructive Editing**: Changes only affect subsequent files within defined parameters
+- **Enhanced 1:1 Correspondence**: Perfect file matching verification for Phase 1 skip logic
+
+### Technical Improvements
+- **Buffer-Based Logic**: Intelligent change propagation without destructive overwrites
+- **Focus-Aware Navigation**: Arrow key navigation respects text input fields
+- **Error Handling**: Comprehensive exception handling with graceful degradation
+- **Configuration Management**: Persistent settings storage and runtime adjustability
