@@ -701,15 +701,23 @@ class RenamingGUI:
                 stored_name = self.renaming_data[original_slide_path]
                 identifier = self._extract_identifier_from_name(stored_name)
                 self.identifier_var.set(identifier)
+<<<<<<< HEAD
                 self._highlight_identifier_text()
+=======
+>>>>>>> 488c1bdcc5edcaf26cbe9c0ed88701c0882b5b72
             # Use updated naming sequence for auto-populated files
             elif self.config_data and self.current_index < len(self.naming_sequence):
                 # Auto-populate with the latest naming sequence
                 self.identifier_var.set(self.naming_sequence[self.current_index])
+<<<<<<< HEAD
                 self._highlight_identifier_text()
             else:
                 self.identifier_var.set("")
                 self._highlight_identifier_text()
+=======
+            else:
+                self.identifier_var.set("")
+>>>>>>> 488c1bdcc5edcaf26cbe9c0ed88701c0882b5b72
             
             self._update_preview()
             
@@ -896,7 +904,10 @@ class RenamingGUI:
         if original_slide_path and original_slide_path in self.renaming_data:
             del self.renaming_data[original_slide_path]
             self.identifier_var.set("")
+<<<<<<< HEAD
             self._highlight_identifier_text()
+=======
+>>>>>>> 488c1bdcc5edcaf26cbe9c0ed88701c0882b5b72
             self.status_var.set("Cleared current rename")
     
     def _show_summary(self):
