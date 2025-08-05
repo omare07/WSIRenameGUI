@@ -1,0 +1,13 @@
+{
+  "folder_path": "C:/Users/oelfern1/Downloads/WSIRenameGUI",
+  "use_default_crop": true,
+  "crop_coords": [
+    10,
+    13,
+    578,
+    732
+  ],
+  "amount_per_slide": 2,
+  "skip_factor": 1,
+  "batch_size": 12
+}
