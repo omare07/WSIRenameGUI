@@ -48,6 +48,9 @@ class RenamingGUI:
         # Track which files were explicitly renamed by user (vs auto-populated)
         self.user_explicit_renames = set()  # File paths explicitly renamed by user
         
+        # Track focus mode - whether user is navigating with keyboard or using text entry
+        self.keyboard_navigation_mode = False
+        
         # Performance optimization - throttle table updates
         self._pending_table_update = False
         
@@ -134,11 +137,29 @@ class RenamingGUI:
         # Focus handling
         self.root.focus_set()
     
+    def _on_click_outside_text(self, event):
+        """Handle clicks outside text entry to enable arrow key navigation."""
+        # Only transfer focus if not clicking on interactive widgets
+        widget = event.widget
+        widget_class = widget.__class__.__name__
+        
+        # Don't interfere with buttons, entries, spinboxes, etc.
+        interactive_widgets = ['Button', 'Entry', 'Spinbox', 'Combobox', 'Scale', 'Scrollbar']
+        
+        if widget_class not in interactive_widgets:
+            # Set focus to the root window to enable arrow key navigation
+            self.keyboard_navigation_mode = True
+            self.root.focus_set()
+        
+        # Don't stop the event propagation completely
+        return None
+    
     def _on_left_arrow(self, event):
         """Handle left arrow key press."""
         # Only navigate if focus is not in text entry
         focused_widget = self.root.focus_get()
         if not isinstance(focused_widget, tk.Entry):
+            self.keyboard_navigation_mode = True
             self._previous_image()
     
     def _on_right_arrow(self, event):
@@ -146,6 +167,7 @@ class RenamingGUI:
         # Only navigate if focus is not in text entry
         focused_widget = self.root.focus_get()
         if not isinstance(focused_widget, tk.Entry):
+            self.keyboard_navigation_mode = True
             self._next_image()
     
     def _on_enter_key(self, event):
@@ -162,8 +184,10 @@ class RenamingGUI:
         """Highlight/select all text in the identifier entry field."""
         try:
             if hasattr(self, 'identifier_entry') and self.identifier_entry:
-                # Schedule the selection to happen after the current event processing
-                self.root.after_idle(lambda: self._perform_text_selection())
+                # Only set focus and highlight if not in keyboard navigation mode
+                if not self.keyboard_navigation_mode:
+                    # Schedule the selection to happen after the current event processing
+                    self.root.after_idle(lambda: self._perform_text_selection())
         except Exception:
             pass
     
@@ -176,6 +200,18 @@ class RenamingGUI:
                 self.identifier_entry.icursor(tk.END)  # Position cursor at end
         except Exception:
             pass
+    
+    def _on_text_entry_click(self, event):
+        """Handle click on text entry - exit keyboard navigation mode."""
+        self.keyboard_navigation_mode = False
+        # Highlight text when user clicks on the entry
+        self.root.after_idle(lambda: self._perform_text_selection())
+        return None
+    
+    def _on_text_entry_keypress(self, event):
+        """Handle keypress in text entry - exit keyboard navigation mode."""
+        self.keyboard_navigation_mode = False
+        return None
     
     def _on_table_select(self, event):
         """Handle table row selection."""
@@ -423,13 +459,22 @@ class RenamingGUI:
         main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
+        # Bind click event to main paned window to enable arrow key navigation
+        main_paned.bind("<Button-1>", self._on_click_outside_text)
+        
         # Left pane: Image display frame
         image_frame = ttk.LabelFrame(main_paned, text="Label Image", padding=10)
         main_paned.add(image_frame, weight=2)  # Give more weight to image pane
         
+        # Bind click event to image frame to enable arrow key navigation
+        image_frame.bind("<Button-1>", self._on_click_outside_text)
+        
         # Image display
         self.image_label = ttk.Label(image_frame, text="No image loaded", anchor=tk.CENTER)
         self.image_label.pack(expand=True)
+        
+        # Bind click event to image label to enable arrow key navigation
+        self.image_label.bind("<Button-1>", self._on_click_outside_text)
         
         # Right pane: CSV Table Panel
         table_frame = ttk.LabelFrame(main_paned, text="Slide Overview", padding=10)
@@ -441,6 +486,9 @@ class RenamingGUI:
         # Navigation frame
         nav_frame = ttk.Frame(image_frame)
         nav_frame.pack(fill=tk.X, pady=10)
+        
+        # Bind click event to navigation frame to enable arrow key navigation
+        nav_frame.bind("<Button-1>", self._on_click_outside_text)
         
         ttk.Button(nav_frame, text="<< Previous", command=self._previous_image).pack(side=tk.LEFT, padx=5)
         
@@ -462,6 +510,10 @@ class RenamingGUI:
         self.identifier_entry.grid(row=0, column=1, padx=5, sticky=tk.W)
         # Enter key binding is handled globally in _setup_keyboard_navigation()
         # Removed duplicate binding to prevent double-triggering
+        
+        # Bind events to exit keyboard navigation mode when user interacts with text entry
+        self.identifier_entry.bind("<Button-1>", self._on_text_entry_click)
+        self.identifier_entry.bind("<KeyPress>", self._on_text_entry_keypress)
         
         ttk.Label(input_frame, text="(e.g., '002 001' or '002001')").grid(row=0, column=2, sticky=tk.W, padx=5)
         
@@ -701,23 +753,15 @@ class RenamingGUI:
                 stored_name = self.renaming_data[original_slide_path]
                 identifier = self._extract_identifier_from_name(stored_name)
                 self.identifier_var.set(identifier)
-<<<<<<< HEAD
                 self._highlight_identifier_text()
-=======
->>>>>>> 488c1bdcc5edcaf26cbe9c0ed88701c0882b5b72
             # Use updated naming sequence for auto-populated files
             elif self.config_data and self.current_index < len(self.naming_sequence):
                 # Auto-populate with the latest naming sequence
                 self.identifier_var.set(self.naming_sequence[self.current_index])
-<<<<<<< HEAD
                 self._highlight_identifier_text()
             else:
                 self.identifier_var.set("")
                 self._highlight_identifier_text()
-=======
-            else:
-                self.identifier_var.set("")
->>>>>>> 488c1bdcc5edcaf26cbe9c0ed88701c0882b5b72
             
             self._update_preview()
             
@@ -777,6 +821,33 @@ class RenamingGUI:
         # Cache result
         self._identifier_cache[filename] = identifier
         return identifier
+    
+    def _parse_identifier_numbers(self, identifier: str) -> list:
+        """Parse identifier string and extract numbers from it."""
+        import re
+        
+        # Handle different identifier formats
+        if '_' in identifier:
+            # Already has underscores, split by them
+            number_parts = identifier.split('_')
+            numbers = []
+            for part in number_parts:
+                if part.isdigit():
+                    numbers.append(int(part))
+        else:
+            # No underscores - check if it's consecutive 3-digit numbers like "005006"
+            if len(identifier) >= 6 and len(identifier) % 3 == 0:
+                # Split into 3-digit chunks
+                numbers = []
+                for i in range(0, len(identifier), 3):
+                    chunk = identifier[i:i+3]
+                    if chunk.isdigit():
+                        numbers.append(int(chunk))
+            else:
+                # Single number or other format - extract all numbers
+                numbers = [int(match) for match in re.findall(r'\d+', identifier)]
+        
+        return numbers
     
     def _build_slide_path_cache(self):
         """Pre-build the slide path cache for all label files to improve performance."""
@@ -904,10 +975,7 @@ class RenamingGUI:
         if original_slide_path and original_slide_path in self.renaming_data:
             del self.renaming_data[original_slide_path]
             self.identifier_var.set("")
-<<<<<<< HEAD
             self._highlight_identifier_text()
-=======
->>>>>>> 488c1bdcc5edcaf26cbe9c0ed88701c0882b5b72
             self.status_var.set("Cleared current rename")
     
     def _show_summary(self):
